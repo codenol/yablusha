@@ -11,23 +11,19 @@ export class ImapService {
     this.config = config;
     this.dataDir = dataDir;
     this.onNewMessages = onNewMessages;
-    this.client = null;
     this.connected = false;
     this.pollTimer = null;
     this.messagesDir = join(dataDir, 'messages');
     this.attachDir = join(dataDir, 'attachments');
-    this.cache = {}; // { contactEmail: [messages] }
+    this.cache = {};
+    this._sentFolder = undefined;
     mkdirSync(this.messagesDir, { recursive: true });
-    this._loadCache();
   }
+
+  // ─── Cache helpers ──────────────────────────────────────────────────────────
 
   _cacheFile(contact) {
     return join(this.messagesDir, `${contact.replace(/[^a-zA-Z0-9@._-]/g, '_')}.json`);
-  }
-
-  _loadCache() {
-    // Load existing cached messages
-    this.cache = {};
   }
 
   _getContactMessages(contact) {
@@ -44,9 +40,177 @@ export class ImapService {
   }
 
   _saveContactMessages(contact) {
-    const msgs = this.cache[contact] || [];
-    writeFileSync(this._cacheFile(contact), JSON.stringify(msgs, null, 2));
+    writeFileSync(this._cacheFile(contact), JSON.stringify(this.cache[contact] || [], null, 2));
   }
+
+  // ─── IMAP connection (per-operation, not persistent) ────────────────────────
+
+  async _withClient(fn) {
+    const client = new ImapFlow({
+      host: 'imap.yandex.ru',
+      port: 993,
+      secure: true,
+      auth: {
+        user: this.config.email,
+        pass: this.config.password,
+      },
+      logger: false,
+      socketTimeout: 20000,
+      connectionTimeout: 15000,
+    });
+
+    // Prevent unhandled 'error' event from crashing the process
+    client.on('error', (err) => {
+      console.error('IMAP client error:', err.message);
+    });
+
+    try {
+      await client.connect();
+      const result = await fn(client);
+      await client.logout().catch(() => {});
+      return result;
+    } catch (err) {
+      client.close();
+      throw err;
+    }
+  }
+
+  // ─── Lifecycle ──────────────────────────────────────────────────────────────
+
+  async connect() {
+    // Verify credentials with a quick connection test
+    await this._withClient(async () => {});
+    this.connected = true;
+    console.log('IMAP: credentials verified for', this.config.email);
+
+    await this.fetchAll().catch(err => console.error('Initial fetch error:', err.message));
+    this._startPolling();
+  }
+
+  async disconnect() {
+    this._stopPolling();
+    this.connected = false;
+  }
+
+  _startPolling() {
+    this._stopPolling();
+    const interval = Math.max(this.config.pollInterval || 30000, 10000);
+    this.pollTimer = setInterval(async () => {
+      await this.fetchAll().catch(err => console.error('Poll error:', err.message));
+    }, interval);
+  }
+
+  _stopPolling() {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+  }
+
+  // ─── Fetch ──────────────────────────────────────────────────────────────────
+
+  async fetchAll() {
+    const contacts = this.config.contacts || [];
+    if (!contacts.length) return [];
+
+    const newMessages = [];
+    try {
+      await this._withClient(async (client) => {
+        // Detect sent folder once per session
+        if (this._sentFolder === undefined) {
+          this._sentFolder = await this._detectSentFolder(client);
+        }
+
+        for (const contact of contacts) {
+          const email = contact.email || contact;
+          const msgs = await this._fetchContact(client, email).catch(err => {
+            console.error(`Fetch error for ${email}:`, err.message);
+            return [];
+          });
+          newMessages.push(...msgs);
+        }
+      });
+    } catch (err) {
+      console.error('IMAP fetchAll error:', err.message);
+    }
+
+    if (newMessages.length > 0 && this.onNewMessages) {
+      this.onNewMessages(newMessages);
+    }
+    return newMessages;
+  }
+
+  async _detectSentFolder(client) {
+    try {
+      const list = await client.list();
+      const sent = list.find(m =>
+        m.specialUse === '\\Sent' ||
+        m.path.toLowerCase() === 'sent' ||
+        m.path.toLowerCase().includes('sent')
+      );
+      const folder = sent ? sent.path : null;
+      console.log('IMAP: sent folder =', folder);
+      return folder;
+    } catch {
+      return null;
+    }
+  }
+
+  async _fetchContact(client, contactEmail) {
+    const existing = this._getContactMessages(contactEmail);
+    const existingUids = new Set(existing.map(m => `${m.direction}:${m.uid}`));
+    const newMessages = [];
+
+    // Fetch INBOX — emails FROM this contact
+    try {
+      const lock = await client.getMailboxLock('INBOX');
+      try {
+        const iter = client.fetch({ from: contactEmail }, { uid: true, source: true });
+        for await (const msg of iter) {
+          if (existingUids.has(`in:${msg.uid}`)) continue;
+          const parsed = await simpleParser(msg.source);
+          const message = this._parseMessage(parsed, msg.uid, 'in', contactEmail);
+          existing.push(message);
+          newMessages.push(message);
+        }
+      } finally {
+        lock.release();
+      }
+    } catch (err) {
+      if (!err.message?.includes('No messages')) {
+        console.error(`INBOX error (${contactEmail}):`, err.message);
+      }
+    }
+
+    // Fetch Sent folder — emails TO this contact
+    if (this._sentFolder) {
+      try {
+        const lock = await client.getMailboxLock(this._sentFolder);
+        try {
+          const iter = client.fetch({ to: contactEmail }, { uid: true, source: true });
+          for await (const msg of iter) {
+            if (existingUids.has(`out:${msg.uid}`)) continue;
+            const parsed = await simpleParser(msg.source);
+            const message = this._parseMessage(parsed, msg.uid, 'out', contactEmail);
+            existing.push(message);
+            newMessages.push(message);
+          }
+        } finally {
+          lock.release();
+        }
+      } catch (err) {
+        if (!err.message?.includes('No messages')) {
+          console.error(`Sent error (${contactEmail}):`, err.message);
+        }
+      }
+    }
+
+    if (newMessages.length > 0) {
+      this.cache[contactEmail] = existing.sort((a, b) => new Date(a.date) - new Date(b.date));
+      this._saveContactMessages(contactEmail);
+    }
+
+    return newMessages;
+  }
+
+  // ─── Message parsing ────────────────────────────────────────────────────────
 
   _parseMessage(parsed, uid, direction, contact) {
     const from = parsed.from?.value?.[0]?.address || '';
@@ -58,219 +222,48 @@ export class ImapService {
     let locationData = null;
     const attachments = [];
 
-    // Detect location
     const locMatch = bodyText.match(LOCATION_RE);
     if (locMatch) {
       type = 'location';
       const lat = parseFloat(locMatch[1]);
       const lon = parseFloat(locMatch[2]);
-      locationData = {
-        lat, lon,
-        mapsUrl: `https://maps.yandex.ru/?pt=${lon},${lat}&z=15&l=map`,
-      };
+      locationData = { lat, lon, mapsUrl: `https://maps.yandex.ru/?pt=${lon},${lat}&z=15&l=map` };
     }
 
-    // Detect photo attachments
     if (parsed.attachments?.length > 0) {
       for (const att of parsed.attachments) {
-        if (att.contentType?.startsWith('image/')) {
-          if (type === 'text') type = 'photo';
-          const attId = uuidv4();
-          const attDir = join(this.attachDir, attId);
-          mkdirSync(attDir, { recursive: true });
-          const filename = att.filename || `image_${attId}.jpg`;
-          const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const filePath = join(attDir, safeName);
-          try {
-            writeFileSync(filePath, att.content);
-          } catch (e) {
-            console.error('Failed to save attachment:', e.message);
-          }
-          attachments.push({
-            filename: safeName,
-            path: `/api/attachments/${attId}/${safeName}`,
-            contentType: att.contentType,
-          });
-        }
-      }
-    }
-
-    return {
-      id: uuidv4(),
-      uid,
-      from,
-      to,
-      date,
-      type,
-      text: bodyText,
-      location: locationData,
-      attachments,
-      direction,
-      contact,
-    };
-  }
-
-  async connect() {
-    this.client = new ImapFlow({
-      host: 'imap.yandex.ru',
-      port: 993,
-      secure: true,
-      auth: {
-        user: this.config.email,
-        pass: this.config.password,
-      },
-      logger: false,
-    });
-
-    await this.client.connect();
-    this.connected = true;
-    console.log('IMAP connected to Yandex Mail');
-
-    // Initial fetch
-    await this.fetchAll().catch(console.error);
-
-    // Start polling
-    this._startPolling();
-  }
-
-  async disconnect() {
-    this._stopPolling();
-    if (this.client) {
-      await this.client.logout().catch(() => {});
-      this.client = null;
-    }
-    this.connected = false;
-  }
-
-  _startPolling() {
-    this._stopPolling();
-    const interval = this.config.pollInterval || 30000;
-    this.pollTimer = setInterval(async () => {
-      await this.fetchAll().catch(err => console.error('Poll error:', err.message));
-    }, interval);
-  }
-
-  _stopPolling() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-  }
-
-  async fetchAll() {
-    if (!this.connected || !this.client) return;
-    const contacts = this.config.contacts || [];
-    const newMessages = [];
-
-    for (const contact of contacts) {
-      const contactEmail = contact.email || contact;
-      const msgs = await this._fetchContact(contactEmail).catch(err => {
-        console.error(`Fetch error for ${contactEmail}:`, err.message);
-        return [];
-      });
-      newMessages.push(...msgs);
-    }
-
-    if (newMessages.length > 0 && this.onNewMessages) {
-      this.onNewMessages(newMessages);
-    }
-
-    return newMessages;
-  }
-
-  async _fetchContact(contactEmail) {
-    const existing = this._getContactMessages(contactEmail);
-    const existingUids = new Set(existing.map(m => `${m.direction}:${m.uid}`));
-    const newMessages = [];
-
-    // Fetch INBOX (incoming from contact)
-    try {
-      const lock = await this.client.getMailboxLock('INBOX');
-      try {
-        const messages = this.client.fetch(
-          { from: contactEmail },
-          { uid: true, envelope: true, source: true }
-        );
-
-        for await (const msg of messages) {
-          const key = `in:${msg.uid}`;
-          if (existingUids.has(key)) continue;
-
-          const parsed = await simpleParser(msg.source);
-          const message = await this._parseMessage(parsed, msg.uid, 'in', contactEmail);
-          existing.push(message);
-          newMessages.push(message);
-        }
-      } finally {
-        lock.release();
-      }
-    } catch (err) {
-      console.error('INBOX fetch error:', err.message);
-    }
-
-    // Fetch Sent folder (outgoing to contact)
-    const sentFolder = await this._findSentFolder();
-    if (sentFolder) {
-      try {
-        const lock = await this.client.getMailboxLock(sentFolder);
+        if (!att.contentType?.startsWith('image/')) continue;
+        if (type === 'text') type = 'photo';
+        const attId = uuidv4();
+        const attDir = join(this.attachDir, attId);
+        mkdirSync(attDir, { recursive: true });
+        const safeName = (att.filename || `image.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
         try {
-          const messages = this.client.fetch(
-            { to: contactEmail },
-            { uid: true, envelope: true, source: true }
-          );
-
-          for await (const msg of messages) {
-            const key = `out:${msg.uid}`;
-            if (existingUids.has(key)) continue;
-
-            const parsed = await simpleParser(msg.source);
-            const message = await this._parseMessage(parsed, msg.uid, 'out', contactEmail);
-            existing.push(message);
-            newMessages.push(message);
-          }
-        } finally {
-          lock.release();
+          writeFileSync(join(attDir, safeName), att.content);
+        } catch (e) {
+          console.error('Attachment save error:', e.message);
         }
-      } catch (err) {
-        console.error('Sent fetch error:', err.message);
+        attachments.push({
+          filename: safeName,
+          path: `/api/attachments/${attId}/${safeName}`,
+          contentType: att.contentType,
+        });
       }
     }
 
-    if (newMessages.length > 0) {
-      // Sort all messages by date
-      this.cache[contactEmail] = existing.sort(
-        (a, b) => new Date(a.date) - new Date(b.date)
-      );
-      this._saveContactMessages(contactEmail);
-    }
-
-    return newMessages;
+    return { id: uuidv4(), uid, from, to, date, type, text: bodyText, location: locationData, attachments, direction, contact };
   }
 
-  async _findSentFolder() {
-    if (this._sentFolder !== undefined) return this._sentFolder;
-    try {
-      const list = await this.client.list();
-      const sent = list.find(m =>
-        m.path.toLowerCase().includes('sent') ||
-        m.specialUse === '\\Sent'
-      );
-      this._sentFolder = sent ? sent.path : null;
-      return this._sentFolder;
-    } catch {
-      this._sentFolder = null;
-      return null;
-    }
-  }
+  // ─── Public ─────────────────────────────────────────────────────────────────
 
   async getMessages(contactEmail) {
-    const msgs = this._getContactMessages(contactEmail);
-    return msgs.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return (this._getContactMessages(contactEmail))
+      .slice()
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
   addSentMessage(contactEmail, msg) {
     const msgs = this._getContactMessages(contactEmail);
-    // Avoid duplicates by message ID
     if (!msgs.find(m => m.id === msg.id)) {
       msgs.push(msg);
       msgs.sort((a, b) => new Date(a.date) - new Date(b.date));

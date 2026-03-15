@@ -4,8 +4,8 @@ export class SmtpService {
   constructor(config) {
     this.config = config;
     this.transporter = nodemailer.createTransport({
-      host: 'smtp.yandex.ru',
-      port: 465,
+      host: config.smtpHost || 'smtp.yandex.ru',
+      port: config.smtpPort || 465,
       secure: true,
       auth: {
         user: config.email,

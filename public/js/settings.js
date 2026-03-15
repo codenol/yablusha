@@ -1,18 +1,22 @@
 import { api } from './api.js';
-import { setPin, disablePin, isPinEnabled } from './auth.js';
 import { subscribePush, unsubscribePush, requestNotificationPermission, initPush } from './push.js';
 import { showToast } from './app.js';
+import { getEmail, clearSession } from './auth.js';
 
 export async function initSettings(onContactsChanged) {
-  // Load current config
   const cfg = await api.getConfig().catch(() => ({}));
   const contacts = await api.getContacts().catch(() => []);
 
-  // Fill fields
+  // Account section
   document.getElementById('setting-email').value = cfg.email || '';
-  document.getElementById('setting-pin-enabled').checked = isPinEnabled();
-  document.getElementById('new-pin').value = '';
-  document.getElementById('confirm-pin').value = '';
+  document.getElementById('setting-imap-host').value = cfg.imapHost || 'imap.yandex.ru';
+  document.getElementById('setting-imap-port').value = cfg.imapPort || 993;
+  document.getElementById('setting-smtp-host').value = cfg.smtpHost || 'smtp.yandex.ru';
+  document.getElementById('setting-smtp-port').value = cfg.smtpPort || 465;
+
+  // Current user label
+  const currentUserEl = document.getElementById('settings-current-user');
+  if (currentUserEl) currentUserEl.textContent = `Вы вошли как: ${getEmail() || ''}`;
 
   // Theme
   const savedTheme = localStorage.getItem('yablusha_theme') || 'auto';
@@ -20,35 +24,17 @@ export async function initSettings(onContactsChanged) {
     btn.classList.toggle('active', btn.dataset.theme === savedTheme);
   });
 
-  // PIN toggle visibility
-  const pinSetup = document.getElementById('pin-setup');
-  pinSetup.classList.toggle('hidden', !isPinEnabled());
-
-  document.getElementById('setting-pin-enabled').addEventListener('change', (e) => {
-    pinSetup.classList.toggle('hidden', !e.target.checked);
-    if (!e.target.checked) disablePin();
-  });
-
-  // Save PIN
-  document.getElementById('btn-save-pin').addEventListener('click', async () => {
-    const pin = document.getElementById('new-pin').value;
-    const confirm = document.getElementById('confirm-pin').value;
-    if (pin !== confirm) { showToast('PIN-коды не совпадают'); return; }
-    try {
-      await setPin(pin);
-      showToast('PIN установлен');
-    } catch (err) {
-      showToast(err.message);
-    }
-  });
-
   // Save account
   document.getElementById('btn-save-account').addEventListener('click', async () => {
     const email = document.getElementById('setting-email').value.trim();
     const password = document.getElementById('setting-password').value;
+    const imapHost = document.getElementById('setting-imap-host').value.trim();
+    const imapPort = parseInt(document.getElementById('setting-imap-port').value) || 993;
+    const smtpHost = document.getElementById('setting-smtp-host').value.trim();
+    const smtpPort = parseInt(document.getElementById('setting-smtp-port').value) || 465;
     if (!email) { showToast('Введите email'); return; }
     try {
-      await api.saveConfig({ email, password });
+      await api.saveConfig({ email, password, imapHost, imapPort, smtpHost, smtpPort });
       showToast('Сохранено');
     } catch (err) {
       showToast('Ошибка: ' + err.message);
@@ -59,6 +45,12 @@ export async function initSettings(onContactsChanged) {
   document.getElementById('btn-toggle-password').addEventListener('click', () => {
     const input = document.getElementById('setting-password');
     input.type = input.type === 'password' ? 'text' : 'password';
+  });
+
+  // Logout
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    clearSession();
+    location.reload();
   });
 
   // Theme buttons
@@ -75,7 +67,6 @@ export async function initSettings(onContactsChanged) {
   // Contacts
   renderContacts(contacts, onContactsChanged);
 
-  // Add contact
   document.getElementById('btn-add-contact').addEventListener('click', async () => {
     const email = document.getElementById('new-contact-email').value.trim();
     const name = document.getElementById('new-contact-name').value.trim();
@@ -117,10 +108,7 @@ export async function initSettings(onContactsChanged) {
         showToast('Уведомления отключены');
       } else {
         const perm = await requestNotificationPermission();
-        if (perm !== 'granted') {
-          showToast('Разрешение на уведомления отклонено');
-          return;
-        }
+        if (perm !== 'granted') { showToast('Разрешение на уведомления отклонено'); return; }
         await subscribePush();
         pushStatus.textContent = '✓ Push-уведомления включены';
         document.getElementById('btn-enable-push').textContent = 'Отключить уведомления';

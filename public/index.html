@@ -16,33 +16,38 @@
 </head>
 <body>
 
-<!-- ─── PIN Screen ─────────────────────────────────────────────────────────── -->
-<div id="screen-pin" class="screen hidden">
-  <div class="pin-container">
-    <div class="pin-logo">💬</div>
-    <h2 class="pin-title">YabluSha</h2>
-    <p class="pin-subtitle" id="pin-subtitle">Введите PIN-код</p>
-    <div class="pin-dots">
-      <span class="pin-dot" id="dot-0"></span>
-      <span class="pin-dot" id="dot-1"></span>
-      <span class="pin-dot" id="dot-2"></span>
-      <span class="pin-dot" id="dot-3"></span>
+<!-- ─── Auth Screen ─────────────────────────────────────────────────────────── -->
+<div id="screen-auth" class="screen hidden">
+  <div class="auth-container">
+    <div class="auth-logo">💬</div>
+    <h2 class="auth-title">YabluSha</h2>
+    <p class="auth-subtitle">Мессенджер через почту</p>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" data-tab="login">Войти</button>
+      <button class="auth-tab" id="tab-register" data-tab="register">Регистрация</button>
     </div>
-    <div class="pin-keypad">
-      <button class="pin-key" data-digit="1">1</button>
-      <button class="pin-key" data-digit="2">2</button>
-      <button class="pin-key" data-digit="3">3</button>
-      <button class="pin-key" data-digit="4">4</button>
-      <button class="pin-key" data-digit="5">5</button>
-      <button class="pin-key" data-digit="6">6</button>
-      <button class="pin-key" data-digit="7">7</button>
-      <button class="pin-key" data-digit="8">8</button>
-      <button class="pin-key" data-digit="9">9</button>
-      <button class="pin-key pin-key--empty"></button>
-      <button class="pin-key" data-digit="0">0</button>
-      <button class="pin-key pin-key--back" id="pin-back">⌫</button>
-    </div>
-    <p class="pin-error hidden" id="pin-error">Неверный PIN. Попробуйте снова</p>
+
+    <form class="auth-form" id="form-login">
+      <input type="email" class="settings-input" id="login-email" placeholder="Email" autocomplete="email" required />
+      <div class="password-wrapper">
+        <input type="password" class="settings-input" id="login-password" placeholder="Пароль" autocomplete="current-password" required />
+        <button type="button" class="toggle-password" id="btn-login-toggle-pw">👁</button>
+      </div>
+      <p class="auth-error hidden" id="login-error"></p>
+      <button type="submit" class="btn-primary btn-full" id="btn-login">Войти</button>
+    </form>
+
+    <form class="auth-form hidden" id="form-register">
+      <input type="email" class="settings-input" id="reg-email" placeholder="Email" autocomplete="email" required />
+      <div class="password-wrapper">
+        <input type="password" class="settings-input" id="reg-password" placeholder="Пароль (минимум 6 символов)" autocomplete="new-password" required />
+        <button type="button" class="toggle-password" id="btn-reg-toggle-pw">👁</button>
+      </div>
+      <input type="password" class="settings-input" id="reg-password2" placeholder="Подтверждение пароля" autocomplete="new-password" required />
+      <p class="auth-error hidden" id="reg-error"></p>
+      <button type="submit" class="btn-primary btn-full" id="btn-register">Зарегистрироваться</button>
+    </form>
   </div>
 </div>
 
@@ -134,16 +139,32 @@
     <div class="settings-content">
 
       <section class="settings-section">
-        <h3 class="settings-section-title">Аккаунт Яндекс.Почты</h3>
-        <label class="settings-label">Email</label>
-        <input type="email" id="setting-email" class="settings-input" placeholder="user@yandex.ru" />
-        <label class="settings-label">Пароль приложения</label>
+        <h3 class="settings-section-title">Почтовый аккаунт</h3>
+        <label class="settings-label">Email (IMAP/SMTP)</label>
+        <input type="email" id="setting-email" class="settings-input" placeholder="user@example.com" />
+        <label class="settings-label">Пароль / пароль приложения</label>
         <div class="password-wrapper">
           <input type="password" id="setting-password" class="settings-input" placeholder="Пароль (оставьте пустым чтобы не менять)" />
           <button class="toggle-password" id="btn-toggle-password">👁</button>
         </div>
+
+        <details class="settings-advanced">
+          <summary class="settings-label" style="cursor:pointer">Расширенные настройки (IMAP/SMTP)</summary>
+          <div style="margin-top:8px">
+            <label class="settings-label">IMAP сервер</label>
+            <input type="text" id="setting-imap-host" class="settings-input" placeholder="imap.yandex.ru" />
+            <label class="settings-label">IMAP порт</label>
+            <input type="number" id="setting-imap-port" class="settings-input" placeholder="993" />
+            <label class="settings-label">SMTP сервер</label>
+            <input type="text" id="setting-smtp-host" class="settings-input" placeholder="smtp.yandex.ru" />
+            <label class="settings-label">SMTP порт</label>
+            <input type="number" id="setting-smtp-port" class="settings-input" placeholder="465" />
+          </div>
+        </details>
+
         <p class="settings-hint">
-          Используйте <a href="https://id.yandex.ru/security/app-passwords" target="_blank">пароль приложения</a> если включена двухфакторная аутентификация
+          Для Яндекс.Почты с 2FA используйте
+          <a href="https://id.yandex.ru/security/app-passwords" target="_blank">пароль приложения</a>
         </p>
         <button class="btn-primary" id="btn-save-account">Сохранить</button>
       </section>
@@ -159,21 +180,9 @@
       </section>
 
       <section class="settings-section">
-        <h3 class="settings-section-title">Безопасность</h3>
-        <div class="settings-row">
-          <label class="settings-label">PIN-код при запуске</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="setting-pin-enabled" />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div id="pin-setup" class="hidden">
-          <label class="settings-label">Новый PIN (4 цифры)</label>
-          <input type="password" id="new-pin" class="settings-input" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" />
-          <label class="settings-label">Подтверждение PIN</label>
-          <input type="password" id="confirm-pin" class="settings-input" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" />
-          <button class="btn-primary" id="btn-save-pin">Установить PIN</button>
-        </div>
+        <h3 class="settings-section-title">Аккаунт</h3>
+        <p class="settings-hint" id="settings-current-user"></p>
+        <button class="btn-secondary" id="btn-logout">Выйти из аккаунта</button>
       </section>
 
       <section class="settings-section">

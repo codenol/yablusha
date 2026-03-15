@@ -47,8 +47,8 @@ export class ImapService {
 
   async _withClient(fn) {
     const client = new ImapFlow({
-      host: 'imap.yandex.ru',
-      port: 993,
+      host: this.config.imapHost || 'imap.yandex.ru',
+      port: this.config.imapPort || 993,
       secure: true,
       auth: {
         user: this.config.email,
@@ -251,15 +251,28 @@ export class ImapService {
       }
     }
 
-    return { id: uuidv4(), uid, from, to, date, type, text: bodyText, location: locationData, attachments, direction, contact };
+    const textStored = this.config.encrypt ? this.config.encrypt(bodyText) : bodyText;
+    const locationStored = (locationData && this.config.encrypt)
+      ? this.config.encrypt(JSON.stringify(locationData))
+      : locationData;
+    return { id: uuidv4(), uid, from, to, date, type, text: textStored, location: locationStored, attachments, direction, contact };
   }
 
   // ─── Public ─────────────────────────────────────────────────────────────────
 
   async getMessages(contactEmail) {
-    return (this._getContactMessages(contactEmail))
+    const msgs = this._getContactMessages(contactEmail)
       .slice()
       .sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (!this.config.decrypt) return msgs;
+    return msgs.map(m => {
+      const text = m.text ? this.config.decrypt(m.text) : '';
+      let location = m.location;
+      if (location && typeof location === 'string') {
+        try { location = JSON.parse(this.config.decrypt(location)); } catch { location = null; }
+      }
+      return { ...m, text, location };
+    });
   }
 
   addSentMessage(contactEmail, msg) {

@@ -54,6 +54,20 @@ export class PushService {
     this._saveSubscriptions();
   }
 
+  // Send to a specific set of subscriptions (rows from DB)
+  async sendToUser(dbRows, title, body, data = {}) {
+    if (!dbRows?.length) return;
+    const payload = JSON.stringify({ title, body, data });
+    await Promise.allSettled(dbRows.map(async (row) => {
+      try {
+        const sub = { endpoint: row.endpoint, ...JSON.parse(row.keys_json) };
+        await webpush.sendNotification(sub, payload);
+      } catch (err) {
+        console.error('Push error:', err.message);
+      }
+    }));
+  }
+
   async sendNotification(title, body, data = {}) {
     const payload = JSON.stringify({ title, body, data });
     const dead = [];

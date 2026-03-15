@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { isPinEnabled, initPinScreen } from './auth.js';
+import { isLoggedIn, saveSession, clearSession, getEmail, getToken } from './auth.js';
 import {
   openChat, loadMessages, sendMessage, sendLocation, addFiles,
   toggleEmoji, closeEmoji, toggleAttachMenu, closeAttachMenu,
@@ -32,30 +32,31 @@ function showView(id) {
 }
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
-function initWebSocket() {
+function initWebSocket(token) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${proto}//${location.host}`;
 
   let ws;
   let reconnectDelay = 1000;
+  let pingInterval = null;
 
   function connect() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       reconnectDelay = 1000;
-      // Ping every 30s to keep alive
-      setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
+      // Authenticate WebSocket connection
+      if (token) ws.send(JSON.stringify({ type: 'auth', token }));
+      // Ping every 30s
+      pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
     };
 
     ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleWsMessage(data);
-      } catch {}
+      try { handleWsMessage(JSON.parse(event.data)); } catch {}
     };
 
     ws.onclose = () => {
+      clearInterval(pingInterval);
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     };
@@ -71,15 +72,12 @@ function handleWsMessage(data) {
     const msgs = data.messages || [];
     const contact = getCurrentContact();
 
-    // Reload current chat if message belongs to it
     if (contact && msgs.some(m => m.contact === contact.email)) {
       loadMessages();
     }
 
-    // Refresh chat list
     loadChatList();
 
-    // Show notification if app is in background
     if (document.hidden && msgs.length) {
       const m = msgs[0];
       if (m.direction === 'in') {
@@ -94,7 +92,6 @@ function handleWsMessage(data) {
   }
 }
 
-// Service Worker notification click
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'notification_click' && event.data.data?.contact) {
@@ -109,7 +106,6 @@ let contacts = [];
 async function loadChatList() {
   contacts = await api.getContacts().catch(() => []);
 
-  // Fetch last messages for each contact
   const lastMessages = {};
   await Promise.all(contacts.map(async (c) => {
     const email = c.email || c;
@@ -123,7 +119,6 @@ async function loadChatList() {
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
 function initEventListeners() {
-  // Chats view
   document.getElementById('btn-settings').addEventListener('click', async () => {
     showView('view-settings');
     await initSettings(async (updated) => {
@@ -165,7 +160,6 @@ function initEventListeners() {
     }
   });
 
-  // Chat view
   document.getElementById('btn-back').addEventListener('click', () => {
     showView('view-chats');
     loadChatList();
@@ -197,17 +191,8 @@ function initEventListeners() {
   });
 
   document.getElementById('btn-send').addEventListener('click', sendMessage);
-
-  document.getElementById('btn-emoji').addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleEmoji();
-  });
-
-  document.getElementById('btn-attach').addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleAttachMenu();
-  });
-
+  document.getElementById('btn-emoji').addEventListener('click', (e) => { e.stopPropagation(); toggleEmoji(); });
+  document.getElementById('btn-attach').addEventListener('click', (e) => { e.stopPropagation(); toggleAttachMenu(); });
   document.getElementById('btn-location').addEventListener('click', sendLocation);
 
   document.getElementById('btn-camera').addEventListener('click', () => {
@@ -220,17 +205,9 @@ function initEventListeners() {
     document.getElementById('input-gallery').click();
   });
 
-  document.getElementById('input-camera').addEventListener('change', (e) => {
-    addFiles(e.target.files);
-    e.target.value = '';
-  });
+  document.getElementById('input-camera').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+  document.getElementById('input-gallery').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
 
-  document.getElementById('input-gallery').addEventListener('change', (e) => {
-    addFiles(e.target.files);
-    e.target.value = '';
-  });
-
-  // Close overlays on outside click
   document.addEventListener('click', (e) => {
     const picker = document.getElementById('emoji-picker');
     const emojiBtn = document.getElementById('btn-emoji');
@@ -241,13 +218,11 @@ function initEventListeners() {
     if (!menu.contains(e.target) && e.target !== attachBtn) closeAttachMenu();
   });
 
-  // Settings back
   document.getElementById('btn-settings-back').addEventListener('click', () => {
     showView('view-chats');
     loadChatList();
   });
 
-  // Image viewer close
   document.getElementById('image-viewer-close').addEventListener('click', () => {
     document.getElementById('image-viewer').classList.add('hidden');
   });
@@ -258,14 +233,12 @@ function initEventListeners() {
     }
   });
 
-  // Modal overlay click
   document.getElementById('modal-new-chat').addEventListener('click', (e) => {
     if (e.target === document.getElementById('modal-new-chat')) {
       document.getElementById('modal-new-chat').classList.add('hidden');
     }
   });
 
-  // Visibility change - refresh when app becomes visible
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       loadChatList();
@@ -274,14 +247,93 @@ function initEventListeners() {
   });
 }
 
-// ─── Service Worker Registration ──────────────────────────────────────────────
+// ─── Auth Screen ──────────────────────────────────────────────────────────────
+
+function initAuthScreen(onSuccess) {
+  const screen = document.getElementById('screen-auth');
+  screen.classList.remove('hidden');
+
+  // Tab switching
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const isLogin = tab.dataset.tab === 'login';
+      document.getElementById('form-login').classList.toggle('hidden', !isLogin);
+      document.getElementById('form-register').classList.toggle('hidden', isLogin);
+    });
+  });
+
+  // Password visibility toggles
+  document.getElementById('btn-login-toggle-pw').addEventListener('click', () => {
+    const input = document.getElementById('login-password');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+  document.getElementById('btn-reg-toggle-pw').addEventListener('click', () => {
+    const input = document.getElementById('reg-password');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+
+  // Login form
+  document.getElementById('form-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    const btn = document.getElementById('btn-login');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Входим...';
+    try {
+      const data = await api.login(email, password);
+      saveSession(data.token, data.email);
+      screen.classList.add('hidden');
+      onSuccess();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Войти';
+    }
+  });
+
+  // Register form
+  document.getElementById('form-register').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const password2 = document.getElementById('reg-password2').value;
+    const errEl = document.getElementById('reg-error');
+    const btn = document.getElementById('btn-register');
+    errEl.classList.add('hidden');
+    if (password !== password2) {
+      errEl.textContent = 'Пароли не совпадают';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Регистрация...';
+    try {
+      const data = await api.register(email, password);
+      saveSession(data.token, data.email);
+      screen.classList.add('hidden');
+      onSuccess();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Зарегистрироваться';
+    }
+  });
+}
+
+// ─── Service Worker ────────────────────────────────────────────────────────────
 async function registerSW() {
   if ('serviceWorker' in navigator) {
-    try {
-      await navigator.serviceWorker.register('/sw.js');
-    } catch (err) {
-      console.warn('SW registration failed:', err);
-    }
+    try { await navigator.serviceWorker.register('/sw.js'); }
+    catch (err) { console.warn('SW registration failed:', err); }
   }
 }
 
@@ -290,16 +342,13 @@ async function boot() {
   initTheme();
   await registerSW();
 
-  const mainScreen = document.getElementById('screen-main');
-  const pinScreen = document.getElementById('screen-pin');
-
   function startApp() {
+    const mainScreen = document.getElementById('screen-main');
     mainScreen.classList.remove('hidden');
     initEventListeners();
-    initWebSocket();
+    initWebSocket(getToken());
     loadChatList();
 
-    // Check if configured
     api.status().then(status => {
       if (!status.configured) {
         showView('view-settings');
@@ -307,15 +356,12 @@ async function boot() {
           contacts = updated;
           await loadChatList();
         });
-        showToast('Настройте аккаунт Яндекс.Почты', 4000);
+        showToast('Настройте почтовый аккаунт', 4000);
       } else {
         showView('view-chats');
       }
-    }).catch(() => {
-      showView('view-chats');
-    });
+    }).catch(() => showView('view-chats'));
 
-    // Handle URL params (e.g. from push notification click)
     const params = new URLSearchParams(location.search);
     const contactEmail = params.get('contact');
     if (contactEmail) {
@@ -326,11 +372,10 @@ async function boot() {
     }
   }
 
-  if (isPinEnabled()) {
-    pinScreen.classList.remove('hidden');
-    initPinScreen(startApp);
-  } else {
+  if (isLoggedIn()) {
     startApp();
+  } else {
+    initAuthScreen(startApp);
   }
 }
 

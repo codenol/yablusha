@@ -90,63 +90,68 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
 }
 
-/* ─── PIN Screen ─────────────────────────────────────────────────────────── */
-.pin-container {
+/* ─── Auth Screen ────────────────────────────────────────────────────────── */
+.auth-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px calc(40px + var(--safe-bottom));
-  gap: 20px;
-}
-
-.pin-logo { font-size: 64px; }
-.pin-title { font-size: 28px; font-weight: 700; color: var(--accent); }
-.pin-subtitle { font-size: 16px; color: var(--text-secondary); }
-
-.pin-dots {
-  display: flex;
-  gap: 20px;
-}
-
-.pin-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid var(--accent);
-  transition: background 0.15s;
-}
-
-.pin-dot.filled { background: var(--accent); }
-
-.pin-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  padding: 40px 24px calc(40px + var(--safe-bottom));
   gap: 12px;
   width: 100%;
-  max-width: 280px;
+  max-width: 420px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
-.pin-key {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--bg-tertiary);
-  font-size: 24px;
-  font-weight: 500;
-  transition: background 0.1s, transform 0.1s;
-  user-select: none;
+.auth-logo { font-size: 56px; }
+.auth-title { font-size: 28px; font-weight: 700; color: var(--accent); margin: 0; }
+.auth-subtitle { font-size: 14px; color: var(--text-secondary); margin: 0 0 8px; }
+
+.auth-tabs {
+  display: flex;
+  gap: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  width: 100%;
 }
 
-.pin-key:active { background: var(--accent); color: white; transform: scale(0.92); }
-.pin-key--back { font-size: 20px; }
-.pin-key--empty { background: none; }
-
-.pin-error {
-  color: #e74c3c;
+.auth-tab {
+  flex: 1;
+  padding: 10px;
   font-size: 14px;
   font-weight: 500;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
+
+.auth-tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.auth-error {
+  color: #e74c3c;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.btn-full { width: 100%; }
+
+.settings-advanced summary { color: var(--text-secondary); font-size: 13px; }
 
 /* ─── Views ──────────────────────────────────────────────────────────────── */
 #screen-main {

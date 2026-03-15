@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a7f5a" id="theme-color-meta" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="YabluSha" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <title>YabluSha</title>
+</head>
+<body>
+
+<!-- ─── PIN Screen ─────────────────────────────────────────────────────────── -->
+<div id="screen-pin" class="screen hidden">
+  <div class="pin-container">
+    <div class="pin-logo">💬</div>
+    <h2 class="pin-title">YabluSha</h2>
+    <p class="pin-subtitle" id="pin-subtitle">Введите PIN-код</p>
+    <div class="pin-dots">
+      <span class="pin-dot" id="dot-0"></span>
+      <span class="pin-dot" id="dot-1"></span>
+      <span class="pin-dot" id="dot-2"></span>
+      <span class="pin-dot" id="dot-3"></span>
+    </div>
+    <div class="pin-keypad">
+      <button class="pin-key" data-digit="1">1</button>
+      <button class="pin-key" data-digit="2">2</button>
+      <button class="pin-key" data-digit="3">3</button>
+      <button class="pin-key" data-digit="4">4</button>
+      <button class="pin-key" data-digit="5">5</button>
+      <button class="pin-key" data-digit="6">6</button>
+      <button class="pin-key" data-digit="7">7</button>
+      <button class="pin-key" data-digit="8">8</button>
+      <button class="pin-key" data-digit="9">9</button>
+      <button class="pin-key pin-key--empty"></button>
+      <button class="pin-key" data-digit="0">0</button>
+      <button class="pin-key pin-key--back" id="pin-back">⌫</button>
+    </div>
+    <p class="pin-error hidden" id="pin-error">Неверный PIN. Попробуйте снова</p>
+  </div>
+</div>
+
+<!-- ─── Main App ───────────────────────────────────────────────────────────── -->
+<div id="screen-main" class="screen hidden">
+
+  <!-- Chats List View -->
+  <div id="view-chats" class="view">
+    <header class="app-header">
+      <h1 class="header-title">YabluSha</h1>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-refresh" title="Обновить">↻</button>
+        <button class="icon-btn" id="btn-new-chat" title="Новый чат">✉</button>
+        <button class="icon-btn" id="btn-settings" title="Настройки">⚙</button>
+      </div>
+    </header>
+    <div class="status-bar" id="status-bar"></div>
+    <div class="chat-list" id="chat-list">
+      <div class="empty-state" id="empty-state">
+        <p>Нет чатов</p>
+        <p class="empty-hint">Добавьте контакт через настройки</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Individual Chat View -->
+  <div id="view-chat" class="view hidden">
+    <header class="app-header">
+      <button class="icon-btn" id="btn-back">←</button>
+      <div class="header-contact">
+        <div class="contact-avatar" id="chat-avatar"></div>
+        <div>
+          <div class="header-title" id="chat-contact-name"></div>
+          <div class="header-subtitle" id="chat-contact-email"></div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-chat-refresh" title="Обновить">↻</button>
+      </div>
+    </header>
+
+    <div class="messages-container" id="messages-container"></div>
+
+    <!-- Input Area -->
+    <div class="input-area">
+      <button class="input-btn" id="btn-emoji" title="Эмодзи">😊</button>
+      <div class="input-wrapper">
+        <textarea
+          id="msg-input"
+          class="msg-input"
+          placeholder="Сообщение..."
+          rows="1"
+        ></textarea>
+      </div>
+      <button class="input-btn" id="btn-attach" title="Прикрепить">📎</button>
+      <button class="input-btn" id="btn-location" title="Геолокация">📍</button>
+      <button class="input-btn send-btn hidden" id="btn-send" title="Отправить">➤</button>
+    </div>
+
+    <!-- Emoji Picker -->
+    <div class="emoji-picker hidden" id="emoji-picker"></div>
+
+    <!-- Attach Menu -->
+    <div class="attach-menu hidden" id="attach-menu">
+      <button class="attach-option" id="btn-camera">
+        <span class="attach-icon">📷</span>
+        <span>Камера</span>
+      </button>
+      <button class="attach-option" id="btn-gallery">
+        <span class="attach-icon">🖼</span>
+        <span>Галерея</span>
+      </button>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="input-camera" accept="image/*" capture="environment" multiple class="hidden" />
+    <input type="file" id="input-gallery" accept="image/*" multiple class="hidden" />
+
+    <!-- Selected files preview -->
+    <div class="files-preview hidden" id="files-preview"></div>
+  </div>
+
+  <!-- Settings View -->
+  <div id="view-settings" class="view hidden">
+    <header class="app-header">
+      <button class="icon-btn" id="btn-settings-back">←</button>
+      <h1 class="header-title">Настройки</h1>
+    </header>
+    <div class="settings-content">
+
+      <section class="settings-section">
+        <h3 class="settings-section-title">Аккаунт Яндекс.Почты</h3>
+        <label class="settings-label">Email</label>
+        <input type="email" id="setting-email" class="settings-input" placeholder="user@yandex.ru" />
+        <label class="settings-label">Пароль приложения</label>
+        <div class="password-wrapper">
+          <input type="password" id="setting-password" class="settings-input" placeholder="Пароль (оставьте пустым чтобы не менять)" />
+          <button class="toggle-password" id="btn-toggle-password">👁</button>
+        </div>
+        <p class="settings-hint">
+          Используйте <a href="https://id.yandex.ru/security/app-passwords" target="_blank">пароль приложения</a> если включена двухфакторная аутентификация
+        </p>
+        <button class="btn-primary" id="btn-save-account">Сохранить</button>
+      </section>
+
+      <section class="settings-section">
+        <h3 class="settings-section-title">Контакты</h3>
+        <div id="contacts-list"></div>
+        <div class="add-contact-form">
+          <input type="email" id="new-contact-email" class="settings-input" placeholder="email@example.com" />
+          <input type="text" id="new-contact-name" class="settings-input" placeholder="Имя (необязательно)" />
+          <button class="btn-primary" id="btn-add-contact">Добавить</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3 class="settings-section-title">Безопасность</h3>
+        <div class="settings-row">
+          <label class="settings-label">PIN-код при запуске</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-pin-enabled" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div id="pin-setup" class="hidden">
+          <label class="settings-label">Новый PIN (4 цифры)</label>
+          <input type="password" id="new-pin" class="settings-input" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" />
+          <label class="settings-label">Подтверждение PIN</label>
+          <input type="password" id="confirm-pin" class="settings-input" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" />
+          <button class="btn-primary" id="btn-save-pin">Установить PIN</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3 class="settings-section-title">Тема</h3>
+        <div class="theme-options">
+          <button class="theme-option" data-theme="auto" id="theme-auto">🌗 Авто</button>
+          <button class="theme-option" data-theme="light" id="theme-light">☀️ Светлая</button>
+          <button class="theme-option" data-theme="dark" id="theme-dark">🌙 Тёмная</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3 class="settings-section-title">Уведомления</h3>
+        <button class="btn-secondary" id="btn-enable-push">Включить push-уведомления</button>
+        <p class="settings-hint" id="push-status"></p>
+      </section>
+
+      <section class="settings-section">
+        <div class="app-info">
+          <p>YabluSha — мессенджер через Яндекс.Почту</p>
+          <p class="settings-hint">Сообщения доставляются по email</p>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── Toast ──────────────────────────────────────────────────────────────── -->
+<div class="toast hidden" id="toast"></div>
+
+<!-- ─── Image Viewer ───────────────────────────────────────────────────────── -->
+<div class="image-viewer hidden" id="image-viewer">
+  <button class="image-viewer-close" id="image-viewer-close">✕</button>
+  <img class="image-viewer-img" id="image-viewer-img" alt="" />
+</div>
+
+<!-- ─── New Chat Dialog ────────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-new-chat">
+  <div class="modal">
+    <h3 class="modal-title">Новый чат</h3>
+    <input type="email" id="new-chat-email" class="settings-input" placeholder="email@example.com" />
+    <input type="text" id="new-chat-name" class="settings-input" placeholder="Имя" />
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-new-chat-cancel">Отмена</button>
+      <button class="btn-primary" id="btn-new-chat-confirm">Начать чат</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

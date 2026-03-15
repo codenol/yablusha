@@ -1,0 +1,6 @@
+node_modules/
+data/config.json
+data/attachments/
+data/messages/
+.env
+*.log

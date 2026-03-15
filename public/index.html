@@ -60,7 +60,7 @@
       <h1 class="header-title">YabluSha</h1>
       <div class="header-actions">
         <button class="icon-btn" id="btn-refresh" title="Обновить">↻</button>
-        <button class="icon-btn" id="btn-new-chat" title="Новый чат">✉</button>
+        <button class="icon-btn" id="btn-contacts" title="Контакты">👥</button>
         <button class="icon-btn" id="btn-settings" title="Настройки">⚙</button>
       </div>
     </header>
@@ -68,9 +68,21 @@
     <div class="chat-list" id="chat-list">
       <div class="empty-state" id="empty-state">
         <p>Нет чатов</p>
-        <p class="empty-hint">Добавьте контакт через настройки</p>
+        <p class="empty-hint">Добавьте контакт через 👥</p>
       </div>
     </div>
+  </div>
+
+  <!-- Contacts View -->
+  <div id="view-contacts" class="view hidden">
+    <header class="app-header">
+      <button class="icon-btn" id="btn-contacts-back">←</button>
+      <h1 class="header-title">Контакты</h1>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-add-contact-open" title="Добавить контакт">+</button>
+      </div>
+    </header>
+    <div class="contacts-view-list" id="contacts-view-list"></div>
   </div>
 
   <!-- Individual Chat View -->
@@ -170,16 +182,6 @@
       </section>
 
       <section class="settings-section">
-        <h3 class="settings-section-title">Контакты</h3>
-        <div id="contacts-list"></div>
-        <div class="add-contact-form">
-          <input type="email" id="new-contact-email" class="settings-input" placeholder="email@example.com" />
-          <input type="text" id="new-contact-name" class="settings-input" placeholder="Имя (необязательно)" />
-          <button class="btn-primary" id="btn-add-contact">Добавить</button>
-        </div>
-      </section>
-
-      <section class="settings-section">
         <h3 class="settings-section-title">Аккаунт</h3>
         <p class="settings-hint" id="settings-current-user"></p>
         <button class="btn-secondary" id="btn-logout">Выйти из аккаунта</button>
@@ -221,15 +223,28 @@
   <img class="image-viewer-img" id="image-viewer-img" alt="" />
 </div>
 
-<!-- ─── New Chat Dialog ────────────────────────────────────────────────────── -->
-<div class="modal-overlay hidden" id="modal-new-chat">
+<!-- ─── Add Contact Dialog ─────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-add-contact">
   <div class="modal">
-    <h3 class="modal-title">Новый чат</h3>
-    <input type="email" id="new-chat-email" class="settings-input" placeholder="email@example.com" />
-    <input type="text" id="new-chat-name" class="settings-input" placeholder="Имя" />
+    <h3 class="modal-title">Новый контакт</h3>
+    <input type="email" id="add-contact-email" class="settings-input" placeholder="email@example.com" />
+    <input type="text" id="add-contact-name" class="settings-input" placeholder="Имя (необязательно)" />
     <div class="modal-actions">
-      <button class="btn-secondary" id="btn-new-chat-cancel">Отмена</button>
-      <button class="btn-primary" id="btn-new-chat-confirm">Начать чат</button>
+      <button class="btn-secondary" id="btn-add-contact-cancel">Отмена</button>
+      <button class="btn-primary" id="btn-add-contact-confirm">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Edit Contact Dialog ────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-edit-contact">
+  <div class="modal">
+    <h3 class="modal-title">Редактировать</h3>
+    <input type="text" id="edit-contact-name" class="settings-input" placeholder="Имя" />
+    <p class="settings-hint" id="edit-contact-email-hint"></p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-edit-contact-cancel">Отмена</button>
+      <button class="btn-primary" id="btn-edit-contact-confirm">Сохранить</button>
     </div>
   </div>
 </div>

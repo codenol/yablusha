@@ -790,6 +790,69 @@ a:hover { text-decoration: underline; }
 .btn-secondary:active { background: var(--bg-tertiary); }
 
 /* Contact in settings */
+/* ─── Contacts View ─────────────────────────────────────────────────────── */
+.contacts-view-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.contact-row:active { background: var(--bg-secondary); }
+
+.contact-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-row-name {
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-row-email {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.contact-action-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: background 0.12s;
+}
+
+.contact-action-btn:active { background: var(--bg-tertiary); }
+.contact-action-btn--chat { color: var(--accent); }
+.contact-action-btn--edit { color: var(--text-secondary); }
+.contact-action-btn--delete { color: #e74c3c; }
+
+/* kept for settings (no longer used there but harmless) */
 .contact-item {
   display: flex;
   align-items: center;
@@ -811,8 +874,6 @@ a:hover { text-decoration: underline; }
   align-items: center;
   justify-content: center;
 }
-
-.add-contact-form { padding-top: 12px; }
 
 /* Theme Options */
 .theme-options {

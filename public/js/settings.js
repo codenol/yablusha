@@ -3,9 +3,8 @@ import { subscribePush, unsubscribePush, requestNotificationPermission, initPush
 import { showToast } from './app.js';
 import { getEmail, clearSession } from './auth.js';
 
-export async function initSettings(onContactsChanged) {
+export async function initSettings() {
   const cfg = await api.getConfig().catch(() => ({}));
-  const contacts = await api.getContacts().catch(() => []);
 
   // Account section
   document.getElementById('setting-email').value = cfg.email || '';
@@ -14,7 +13,6 @@ export async function initSettings(onContactsChanged) {
   document.getElementById('setting-smtp-host').value = cfg.smtpHost || 'smtp.yandex.ru';
   document.getElementById('setting-smtp-port').value = cfg.smtpPort || 465;
 
-  // Current user label
   const currentUserEl = document.getElementById('settings-current-user');
   if (currentUserEl) currentUserEl.textContent = `Вы вошли как: ${getEmail() || ''}`;
 
@@ -41,13 +39,11 @@ export async function initSettings(onContactsChanged) {
     }
   });
 
-  // Toggle password visibility
   document.getElementById('btn-toggle-password').addEventListener('click', () => {
     const input = document.getElementById('setting-password');
     input.type = input.type === 'password' ? 'text' : 'password';
   });
 
-  // Logout
   document.getElementById('btn-logout').addEventListener('click', () => {
     clearSession();
     location.reload();
@@ -62,26 +58,6 @@ export async function initSettings(onContactsChanged) {
       btn.classList.add('active');
       applyTheme(theme);
     });
-  });
-
-  // Contacts
-  renderContacts(contacts, onContactsChanged);
-
-  document.getElementById('btn-add-contact').addEventListener('click', async () => {
-    const email = document.getElementById('new-contact-email').value.trim();
-    const name = document.getElementById('new-contact-name').value.trim();
-    if (!email) { showToast('Введите email'); return; }
-    try {
-      await api.addContact(email, name || email);
-      document.getElementById('new-contact-email').value = '';
-      document.getElementById('new-contact-name').value = '';
-      const updated = await api.getContacts();
-      renderContacts(updated, onContactsChanged);
-      onContactsChanged(updated);
-      showToast('Контакт добавлен');
-    } catch (err) {
-      showToast('Ошибка: ' + err.message);
-    }
   });
 
   // Push notifications
@@ -117,34 +93,6 @@ export async function initSettings(onContactsChanged) {
     } catch (err) {
       showToast('Ошибка: ' + err.message);
     }
-  });
-}
-
-function renderContacts(contacts, onChanged) {
-  const list = document.getElementById('contacts-list');
-  list.innerHTML = '';
-  if (!contacts.length) {
-    list.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Нет контактов</p>';
-    return;
-  }
-  contacts.forEach(c => {
-    const item = document.createElement('div');
-    item.className = 'contact-item';
-    item.innerHTML = `
-      <div class="contact-avatar" style="width:36px;height:36px;font-size:14px">${getInitial(c.name || c.email)}</div>
-      <div class="contact-item-info">
-        <div class="contact-item-name">${escHtml(c.name || c.email)}</div>
-        <div class="contact-item-email">${escHtml(c.email)}</div>
-      </div>
-      <button class="btn-contact-delete" title="Удалить">✕</button>
-    `;
-    item.querySelector('.btn-contact-delete').addEventListener('click', async () => {
-      await api.deleteContact(c.email);
-      const updated = await api.getContacts();
-      renderContacts(updated, onChanged);
-      onChanged(updated);
-    });
-    list.appendChild(item);
   });
 }
 

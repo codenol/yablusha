@@ -5,7 +5,7 @@ import {
   toggleEmoji, closeEmoji, toggleAttachMenu, closeAttachMenu,
   autoResizeInput, renderChatList, getCurrentContact,
 } from './chat.js';
-import { initSettings, applyTheme, escHtml } from './settings.js';
+import { initSettings, applyTheme, escHtml, getInitial } from './settings.js';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 function initTheme() {
@@ -116,15 +116,77 @@ async function loadChatList() {
   renderChatList(contacts, lastMessages);
 }
 
+// ─── Contacts View ────────────────────────────────────────────────────────────
+
+async function renderContactsView() {
+  contacts = await api.getContacts().catch(() => []);
+  const list = document.getElementById('contacts-view-list');
+  list.innerHTML = '';
+
+  if (!contacts.length) {
+    list.innerHTML = '<div class="empty-state"><p>Нет контактов</p><p class="empty-hint">Нажмите + чтобы добавить</p></div>';
+    return;
+  }
+
+  contacts.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'contact-row';
+    row.innerHTML = `
+      <div class="contact-avatar">${getInitial(c.name || c.email)}</div>
+      <div class="contact-row-info">
+        <div class="contact-row-name">${escHtml(c.name || c.email)}</div>
+        <div class="contact-row-email">${escHtml(c.email)}</div>
+      </div>
+      <div class="contact-row-actions">
+        <button class="contact-action-btn contact-action-btn--chat" title="Открыть чат">💬</button>
+        <button class="contact-action-btn contact-action-btn--edit" title="Редактировать">✏</button>
+        <button class="contact-action-btn contact-action-btn--delete" title="Удалить">✕</button>
+      </div>
+    `;
+
+    row.querySelector('.contact-action-btn--chat').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showView('view-chats');
+      openChat(c);
+      loadChatList();
+    });
+
+    row.querySelector('.contact-action-btn--edit').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window._openEditContact(c.email, c.name);
+    });
+
+    row.querySelector('.contact-action-btn--delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить контакт ${c.name || c.email}?`)) return;
+      try {
+        await api.deleteContact(c.email);
+        contacts = await api.getContacts();
+        await loadChatList();
+        await renderContactsView();
+        showToast('Контакт удалён');
+      } catch (err) {
+        showToast('Ошибка: ' + err.message);
+      }
+    });
+
+    // Tap on row itself also opens chat
+    row.addEventListener('click', () => {
+      showView('view-chats');
+      openChat(c);
+      loadChatList();
+    });
+
+    list.appendChild(row);
+  });
+}
+
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
 function initEventListeners() {
   document.getElementById('btn-settings').addEventListener('click', async () => {
     showView('view-settings');
-    await initSettings(async (updated) => {
-      contacts = updated;
-      await loadChatList();
-    });
+    await initSettings();
   });
 
   document.getElementById('btn-refresh').addEventListener('click', async () => {
@@ -134,31 +196,85 @@ function initEventListeners() {
     showToast('Обновлено');
   });
 
-  document.getElementById('btn-new-chat').addEventListener('click', () => {
-    document.getElementById('modal-new-chat').classList.remove('hidden');
-    document.getElementById('new-chat-email').value = '';
-    document.getElementById('new-chat-name').value = '';
+  // ─── Contacts view ────────────────────────────────────────────────────────
+
+  document.getElementById('btn-contacts').addEventListener('click', async () => {
+    showView('view-contacts');
+    await renderContactsView();
   });
 
-  document.getElementById('btn-new-chat-cancel').addEventListener('click', () => {
-    document.getElementById('modal-new-chat').classList.add('hidden');
+  document.getElementById('btn-contacts-back').addEventListener('click', () => {
+    showView('view-chats');
   });
 
-  document.getElementById('btn-new-chat-confirm').addEventListener('click', async () => {
-    const email = document.getElementById('new-chat-email').value.trim();
-    const name = document.getElementById('new-chat-name').value.trim();
+  // Add contact modal
+  document.getElementById('btn-add-contact-open').addEventListener('click', () => {
+    document.getElementById('add-contact-email').value = '';
+    document.getElementById('add-contact-name').value = '';
+    document.getElementById('modal-add-contact').classList.remove('hidden');
+    document.getElementById('add-contact-email').focus();
+  });
+
+  document.getElementById('btn-add-contact-cancel').addEventListener('click', () => {
+    document.getElementById('modal-add-contact').classList.add('hidden');
+  });
+
+  document.getElementById('modal-add-contact').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modal-add-contact'))
+      document.getElementById('modal-add-contact').classList.add('hidden');
+  });
+
+  document.getElementById('btn-add-contact-confirm').addEventListener('click', async () => {
+    const email = document.getElementById('add-contact-email').value.trim();
+    const name = document.getElementById('add-contact-name').value.trim();
     if (!email) { showToast('Введите email'); return; }
     try {
       await api.addContact(email, name || email);
-      document.getElementById('modal-new-chat').classList.add('hidden');
+      document.getElementById('modal-add-contact').classList.add('hidden');
       contacts = await api.getContacts();
       await loadChatList();
-      const contact = contacts.find(c => c.email === email);
-      if (contact) openChat(contact);
+      await renderContactsView();
+      showToast('Контакт добавлен');
     } catch (err) {
       showToast('Ошибка: ' + err.message);
     }
   });
+
+  // Edit contact modal
+  let editingContactEmail = null;
+
+  document.getElementById('btn-edit-contact-cancel').addEventListener('click', () => {
+    document.getElementById('modal-edit-contact').classList.add('hidden');
+  });
+
+  document.getElementById('modal-edit-contact').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modal-edit-contact'))
+      document.getElementById('modal-edit-contact').classList.add('hidden');
+  });
+
+  document.getElementById('btn-edit-contact-confirm').addEventListener('click', async () => {
+    if (!editingContactEmail) return;
+    const name = document.getElementById('edit-contact-name').value.trim();
+    try {
+      await api.updateContact(editingContactEmail, name);
+      document.getElementById('modal-edit-contact').classList.add('hidden');
+      contacts = await api.getContacts();
+      await loadChatList();
+      await renderContactsView();
+      showToast('Сохранено');
+    } catch (err) {
+      showToast('Ошибка: ' + err.message);
+    }
+  });
+
+  // Expose edit trigger for contact rows
+  window._openEditContact = (email, currentName) => {
+    editingContactEmail = email;
+    document.getElementById('edit-contact-name').value = currentName || '';
+    document.getElementById('edit-contact-email-hint').textContent = email;
+    document.getElementById('modal-edit-contact').classList.remove('hidden');
+    document.getElementById('edit-contact-name').focus();
+  };
 
   document.getElementById('btn-back').addEventListener('click', () => {
     showView('view-chats');
@@ -233,11 +349,6 @@ function initEventListeners() {
     }
   });
 
-  document.getElementById('modal-new-chat').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('modal-new-chat')) {
-      document.getElementById('modal-new-chat').classList.add('hidden');
-    }
-  });
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
@@ -352,10 +463,7 @@ async function boot() {
     api.status().then(status => {
       if (!status.configured) {
         showView('view-settings');
-        initSettings(async (updated) => {
-          contacts = updated;
-          await loadChatList();
-        });
+        initSettings();
         showToast('Настройте почтовый аккаунт', 4000);
       } else {
         showView('view-chats');
